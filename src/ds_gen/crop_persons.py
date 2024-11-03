@@ -6,14 +6,9 @@ from random import shuffle
 
 import cv2
 import numpy as np
-from PIL import Image
 from loguru import logger
 from ultralytics import YOLO
 from tqdm import tqdm
-from imgaug.augmentables.bbs import (
-    BoundingBox,
-    BoundingBoxesOnImage
-)
 
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
