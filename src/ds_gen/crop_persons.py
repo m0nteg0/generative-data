@@ -104,6 +104,7 @@ class PersonFinder:
             x for x in source_dir.rglob('*')
             if x.is_file() and x.suffix in image_extensions
         ]
+        image_paths = sorted(image_paths)
         logger.info(f'Total images: {len(image_paths)}')
 
         if args.limit_per_subdir < 1:
@@ -128,44 +129,41 @@ class PersonFinder:
             target_shape: tuple[int, int],
     ):
         image = cv2.imread(str(img_path))
-        results = self.__person_detector(image, verbose=False)
-        for result in results:
-            labels = result.boxes.cls.detach().cpu().numpy().astype(int)
-            bboxes = result.boxes.xyxy.detach().cpu().numpy().astype(int)
-            bboxes_wh = result.boxes.xywh.detach().cpu().numpy().astype(int)
+        result = self.__person_detector(image, verbose=False)[0]
+        labels = result.boxes.cls.detach().cpu().numpy().astype(int)
+        bboxes = result.boxes.xyxy.detach().cpu().numpy().astype(int)
+        bboxes_wh = result.boxes.xywh.detach().cpu().numpy().astype(int)
 
-            filtered_bboxes = self.__filter_boxes(
-                bboxes, bboxes_wh, labels,
-                target_label, obj_min_size
+        filtered_bboxes = self.__filter_boxes(
+            bboxes, bboxes_wh, labels,
+            target_label, obj_min_size
+        )
+
+        if (
+                len(filtered_bboxes) == 0 or
+                len(filtered_bboxes) > max_objects_count
+        ):
+            return None
+
+        squared_bboxes = self.__to_square(image, filtered_bboxes)
+
+        for box_idx, box in enumerate(squared_bboxes):
+            sl_data = (
+                slice(box[1], box[3]),
+                slice(box[0], box[2]),
+                slice(None)
+            )
+            cropped_image = image[sl_data].copy()
+            cropped_image = cv2.resize(
+                cropped_image, target_shape, interpolation=cv2.INTER_CUBIC
             )
 
-            if (
-                    len(filtered_bboxes) == 0 or
-                    len(filtered_bboxes) > max_objects_count
-            ):
-                continue
-
-            squared_bboxes = self.__to_square(filtered_bboxes, image.shape)
-
-            for box_idx, box in enumerate(squared_bboxes):
-                sl_data = (
-                    slice(box[0, 1], box[1, 1]),
-                    slice(box[0, 0], box[1, 0]),
-                    slice(None)
-                )
-                cropped_image = image[sl_data].copy()
-                cropped_image = Image.fromarray(cropped_image)
-                cropped_image.thumbnail(
-                    target_shape, Image.Resampling.LANCZOS
-                )
-                cropped_image = np.asarray(cropped_image)
-
-                parent_dir = img_path.parent.name
-                file_name = (
-                    f'{parent_dir}_{img_path.stem}_{str(box_idx).zfill(3)}.png'
-                )
-                file_name = str(dst_path / file_name)
-                cv2.imwrite(file_name, cropped_image)
+            parent_dir = img_path.parent.name
+            file_name = (
+                f'{parent_dir}_{img_path.stem}_{str(box_idx).zfill(3)}.png'
+            )
+            file_name = str(dst_path / file_name)
+            cv2.imwrite(file_name, cropped_image)
 
     def __filter_boxes(
             self,
@@ -196,30 +194,70 @@ class PersonFinder:
 
     def __to_square(
             self,
+            image: np.ndarray,
             bboxes: np.ndarray,
-            image_shape: tuple[int, ...]
     ) -> np.ndarray:
+        # Get square proportions
         for box in bboxes:
             wh = box[2:] - box[:2]
             if wh[0] > wh[1]:
                 diff = wh[0] - wh[1]
-                shift_0 = diff // 2
-                shift_1 = diff - shift_0
-                box[1] -= shift_0
-                box[3] += shift_1
+                shifts = [-diff // 2, diff - diff // 2]
+                box[[1, 3]] += np.array(shifts, dtype=box.dtype)
             elif wh[1] > wh[0]:
                 diff = wh[1] - wh[0]
-                shift_0 = diff // 2
-                shift_1 = diff - shift_0
-                box[0] -= shift_0
-                box[2] += shift_1
+                shifts = [-diff // 2, diff - diff // 2]
+                box[[0, 2]] += np.array(shifts, dtype=box.dtype)
 
-        bboxes = BoundingBoxesOnImage(
-            [BoundingBox(*x) for x in bboxes],
-            shape=image_shape
-        )
-        bboxes = bboxes.remove_out_of_image().clip_out_of_image()
-        bboxes = [x.coords for x in bboxes.bounding_boxes]
+        # Check out of bounds
+        bboxes[:, :2] = np.maximum(bboxes[:, :2], 0)
+        bboxes[:, 2] = np.minimum(bboxes[:, 2], image.shape[1])
+        bboxes[:, 3] = np.minimum(bboxes[:, 3], image.shape[0])
+
+        faces = {i: None for i in range(len(bboxes))}
+        for i, bbox in enumerate(bboxes):
+            box_image = image[
+                bbox[1]:bbox[3], bbox[0]:bbox[2], :
+            ]
+            result = self.__face_detector(box_image, verbose=False)[0]
+            face_bboxes = (
+                result.boxes.xyxy.detach().cpu().numpy().astype(int)
+            )
+            if len(face_bboxes) == 0:
+                continue
+            s_indices = np.argsort(face_bboxes[:, 1])[0]
+            faces[i] = face_bboxes[s_indices]
+
+        for person_idx in faces:
+            person_box = bboxes[person_idx]
+            wh = person_box[2:] - person_box[:2]
+            diff = abs(wh[1] - wh[0])
+            if faces[person_idx] is None:
+                if wh[0] > wh[1]:
+                    shifts = [diff // 2, -(diff - diff // 2)]
+                    person_box[[0, 2]] += np.array(
+                        shifts, dtype=person_box.dtype
+                    )
+                elif wh[1] > wh[0]:
+                    shifts = [diff // 2, -(diff - diff // 2)]
+                    person_box[[1, 3]] += np.array(
+                        shifts, dtype=person_box.dtype
+                    )
+            else:
+                face_box = faces[person_idx]
+                if wh[1] > wh[0]:
+                    border_dist = face_box[1], wh[1] - face_box[1]
+                    if border_dist[0] < border_dist[1]:
+                        person_box[3] -= diff
+                    elif border_dist[0] > border_dist[1]:
+                        person_box[1] += diff
+                else:
+                    border_dist = face_box[0], wh[0] - face_box[0]
+                    if border_dist[0] < border_dist[1]:
+                        person_box[2] -= diff
+                    elif border_dist[0] > border_dist[1]:
+                        person_box[0] += diff
+
         return np.array(bboxes, dtype=int)
 
     def run(self):
