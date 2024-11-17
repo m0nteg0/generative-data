@@ -16,6 +16,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class YoloModelType(Enum):
+    """Type of yolo model."""
+
     yolo11n = 'yolo11n'
     yolo11s = 'yolo11s'
     yolo11m = 'yolo11m'
@@ -75,6 +77,11 @@ class PFParams(BaseModel):
 
 class PersonFinder:
     """A class that crops the area of an image containing a person.
+
+    Each input image is searched for a region containing a person using
+    the yolo detector. The found region is then reduced to square proportions,
+    preserving the person's face in the given region (if there is a face
+    in the image).
     """
 
     def __init__(self, params: PFParams):
@@ -90,6 +97,26 @@ class PersonFinder:
     def __init_paths(
             self, params: PFParams
     ) -> list[Path] | dict[str, list[Path]]:
+        """Initializes the paths for input and output based on user parameters.
+
+        This method prepares the necessary file paths for image processing,
+        handling both force override and existing directory warnings.
+
+        Parameters
+        ----------
+        params : PFParams
+            An instance of the PFParams class containing
+            user-defined parameters.
+
+        Returns
+        -------
+        list[Path] | dict[str, list[Path]]
+            If `params.limit_per_subdir` is less than 1: Returns a sorted list
+            of all image paths within the input directory. Otherwise: Returns
+            a dictionary where keys are subdirectory names and values are lists
+            of image paths within each subdirectory.
+
+        """
         source_dir: Path = params.input
         output_dir: Path = params.output
 
@@ -144,6 +171,25 @@ class PersonFinder:
             obj_min_size: tuple[int, int],
             target_shape: tuple[int, int],
     ):
+        """Processes an image to extract and save cropped images.
+
+        Parameters
+        ----------
+        img_path : Path
+            Path to the input image file.
+        dst_path : Path
+            Path to the directory where cropped images will be saved.
+        target_label : int
+            The label representing a person in the detection model's output.
+        max_objects_count : int
+            Maximum number of detected persons to process.
+        obj_min_size : tuple[int, int]
+            Minimum size (width, height) for a detected object to
+            be considered.
+        target_shape : tuple[int, int]
+            Desired shape (width, height) for the cropped images.
+
+        """
         image = cv2.imread(str(img_path))
         result = self.__person_detector(image, verbose=False)[0]
         labels = result.boxes.cls.detach().cpu().numpy().astype(int)
@@ -189,6 +235,40 @@ class PersonFinder:
             target_label: int,
             shape_thresh_min: tuple[int, int]
     ) -> np.ndarray:
+        """Filters bounding boxes based on label and size.
+
+        This method filters a set of bounding boxes based on the
+        following criteria:
+
+        1. **Label:** Only bounding boxes with the specified `target_label`
+        are kept.
+        2. **Size:** Bounding boxes must have a minimum area defined by
+        `shape_thresh_min`. The area is calculated as the product of width
+        and height. Bounding boxes smaller than 10% of the maximum area
+        are also removed.
+
+        Parameters
+        ----------
+        bboxes : np.ndarray
+            A numpy array of bounding boxes in format [xmin, ymin, xmax, ymax].
+        bboxes_wh : np.ndarray
+            A numpy array of bounding box widths and heights in
+            format [width, height].
+        labels : np.ndarray
+            A numpy array of labels corresponding to each bounding box.
+        target_label : int
+            The label to filter for.
+        shape_thresh_min : tuple[int, int]
+            A tuple representing the minimum width and height for a
+            bounding box to be kept.
+
+        Returns
+        -------
+        np.ndarray
+            A numpy array of filtered bounding boxes in
+            format [xmin, ymin, xmax, ymax].
+
+        """
         bboxes = bboxes[labels == target_label]
         bboxes_wh = bboxes_wh[labels == target_label]
 
