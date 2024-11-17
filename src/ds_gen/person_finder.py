@@ -1,4 +1,4 @@
-"""A script that performs cropping and resizing of images to a given size."""
+"""A class that crops the area of an image containing a person."""
 
 from enum import Enum
 from pathlib import Path
@@ -85,6 +85,15 @@ class PersonFinder:
     """
 
     def __init__(self, params: PFParams):
+        """Initializes the Person Finder object.
+
+        Parameters
+        ----------
+        params : PFParams
+            A PFParams object containing configuration parameters for the
+            person finder.
+
+        """
         self.__person_detector: YOLO = YOLO('yolo11s.pt')
         self.__face_detector: YOLO = YOLO(
             PROJECT_ROOT / 'data' / 'models' / 'yolov11n-face.pt'
@@ -293,6 +302,38 @@ class PersonFinder:
             image: np.ndarray,
             bboxes: np.ndarray,
     ) -> np.ndarray:
+        """Ensures all bounding boxes in `bboxes` are square proprotions.
+
+        This method iterates through each bounding box (`bbox`) in `bboxes`,
+        calculating its width and height.
+
+        If the width is greater than the height, it calculates the difference
+        and shifts the top and bottom coordinates to center the box.
+        Conversely, if the height is greater than the width, it shifts
+        the left and right coordinates.
+
+        After squaring the bounding boxes, it checks if they are within
+        the image boundaries and adjusts them accordingly.
+        Then, it utilizes the `_get_faces` method to detect faces within
+        each squared bounding box. Finally, it calls the
+        `_shift_boxes_wrt_face` method to further shift the bounding
+        boxes based on detected face locations.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            The input image as a NumPy array.
+        bboxes : np.ndarray
+            A NumPy array of shape (N, 4) representing N bounding
+            boxes in format (x1, y1, x2, y2).
+
+        Returns
+        -------
+        np.ndarray
+            A NumPy array of shape (N, 4) representing N bounding boxes
+            in format (x1, y1, x2, y2).
+
+        """
         # Get square proportions
         for box in bboxes:
             wh = box[2:] - box[:2]
@@ -320,6 +361,30 @@ class PersonFinder:
             image: np.ndarray,
             bboxes: np.ndarray
     ) -> dict[int, np.ndarray | None]:
+        """Detects faces within each bounding box provided.
+
+        This method iterates through the given bounding boxes (bboxes) and
+        extracts the corresponding image patches. It then utilizes the
+        internal face detector to detect faces within each patch.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            The input image as a NumPy array.
+        bboxes : np.ndarray
+            A NumPy array of shape (N, 4) representing bounding boxes, where
+            N is the number of bounding boxes. Each row represents a box
+            in the format [x_min, y_min, x_max, y_max].
+
+        Returns
+        -------
+        dict[int, np.ndarray | None]
+            A dictionary where keys are indices corresponding to
+            the input bounding boxes and values are NumPy arrays of detected
+            face bounding boxes. If no faces are detected within a
+            bounding box, the value will be `None`.
+
+        """
         faces = {i: None for i in range(len(bboxes))}
         for i, bbox in enumerate(bboxes):
             box_image = image[
@@ -340,6 +405,40 @@ class PersonFinder:
             bboxes: np.ndarray,
             faces: dict[int, np.ndarray | None]
     ) -> np.ndarray:
+        """Shifts bounding boxes to better align with detected faces.
+
+        This method iterates through the provided bounding boxes (bboxes) and
+        correspondingly detected face bounding boxes (faces). For each box:
+
+        1. **Calculates aspect ratio:** Determines the width-to-height
+        ratio of the bounding box.
+
+        2. **Handles missing faces:** If no face is detected within a bounding
+           box, it adjusts the box size to be roughly square based on its
+           original aspect ratio.
+
+        3. **Shifts boxes based on face location:** If a face is detected, it
+           adjusts the bounding box coordinates to better align with the face's
+           position within the box. The shift direction and magnitude are
+           determined by comparing the width and height of the bounding box
+           and the face's position relative to the box's edges.
+
+        Parameters
+        ----------
+        bboxes : np.ndarray
+            A NumPy array of shape (N, 4) representing bounding boxes, where
+            N is the number of bounding boxes. Each row represents a box
+            in the format [x_min, y_min, x_max, y_max].
+        faces : dict[int, np.ndarray  |  None]
+            A dictionary mapping bounding box indices to detected face
+            bounding boxes (as NumPy arrays).
+
+        Returns
+        -------
+        np.ndarray
+            The modified bounding box array with shifted coordinates.
+
+        """
         shifted_bboxes = bboxes.copy()
         for person_idx in faces:
             person_box = shifted_bboxes[person_idx]
@@ -374,6 +473,12 @@ class PersonFinder:
         return shifted_bboxes
 
     def run(self):
+        """Runs the person finder pipeline, cropping images and saving outputs.
+
+        This method processes a list of image paths, extracts persons
+        from each image, and saves the cropped person regions to the specified
+        output directory.
+        """
         output_dir: Path = self.__params.output
 
         target_label = self.__params.target_label
