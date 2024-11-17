@@ -230,6 +230,16 @@ class PersonFinder:
         bboxes[:, 2] = np.minimum(bboxes[:, 2], image.shape[1])
         bboxes[:, 3] = np.minimum(bboxes[:, 3], image.shape[0])
 
+        faces: dict[int, np.ndarray | None] = self._get_faces(image, bboxes)
+        shifted_bboxes: np.ndarray = self._shift_boxes_wrt_face(bboxes, faces)
+
+        return shifted_bboxes
+
+    def _get_faces(
+            self,
+            image: np.ndarray,
+            bboxes: np.ndarray
+    ) -> dict[int, np.ndarray | None]:
         faces = {i: None for i in range(len(bboxes))}
         for i, bbox in enumerate(bboxes):
             box_image = image[
@@ -243,9 +253,16 @@ class PersonFinder:
                 continue
             s_indices = np.argsort(face_bboxes[:, 1])[0]
             faces[i] = face_bboxes[s_indices]
+        return faces
 
+    def _shift_boxes_wrt_face(
+            self,
+            bboxes: np.ndarray,
+            faces: dict[int, np.ndarray | None]
+    ) -> np.ndarray:
+        shifted_bboxes = bboxes.copy()
         for person_idx in faces:
-            person_box = bboxes[person_idx]
+            person_box = shifted_bboxes[person_idx]
             wh = person_box[2:] - person_box[:2]
             diff = abs(wh[1] - wh[0])
             if faces[person_idx] is None:
@@ -274,7 +291,7 @@ class PersonFinder:
                     elif border_dist[0] > border_dist[1]:
                         person_box[0] += diff
 
-        return np.array(bboxes, dtype=int)
+        return shifted_bboxes
 
     def run(self):
         output_dir: Path = self.__params.output
