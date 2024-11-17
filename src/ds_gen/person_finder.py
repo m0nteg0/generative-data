@@ -1,33 +1,99 @@
 """A script that performs cropping and resizing of images to a given size."""
 
-import argparse
+from enum import Enum
 from pathlib import Path
 from random import shuffle
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 from loguru import logger
 from ultralytics import YOLO
-from tqdm import tqdm
+from pydantic import BaseModel, Field
 
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
+class YoloModelType(Enum):
+    yolo11n = 'yolo11n'
+    yolo11s = 'yolo11s'
+    yolo11m = 'yolo11m'
+    yolo11l = 'yolo11l'
+    yolo11x = 'yolo11x'
+
+
+class PFParams(BaseModel):
+    """Parameters for Person Finder class."""
+
+    input: Path = Field(
+        description='Path to images dataset.'
+    )
+
+    output: Path = Field(
+        description='Path where cropped images will be saved.'
+    )
+
+    yolo_model: YoloModelType = Field(
+        default=YoloModelType.yolo11s,
+        description='Type of yolo model for person detection.'
+    )
+
+    target_size: list[int] = Field(
+        default=[1024, 1024],
+        description='Output image size.'
+    )
+
+    target_label: int = Field(
+        ge=0,
+        default=0,
+        description='Target class label.'
+    )
+
+    max_object_count: int = Field(
+        gt=0,
+        default=1,
+        description='Maximal objects count per image.'
+    )
+
+    limit_per_subdir: int = Field(
+        ge=0,
+        default=0,
+        description='Maximal images per sub directory.'
+    )
+
+    min_obj_size: list[int] = Field(
+        default=[512, 512],
+        description='Minimal object size.'
+    )
+
+    force: bool = Field(
+        default=False,
+        description='Forced run.'
+    )
+
+
 class PersonFinder:
-    def __init__(self, opts: argparse.Namespace):
-        self.__person_detector = YOLO('yolo11s.pt')
-        self.__face_detector = YOLO(
+    """A class that crops the area of an image containing a person.
+    """
+
+    def __init__(self, params: PFParams):
+        self.__person_detector: YOLO = YOLO('yolo11s.pt')
+        self.__face_detector: YOLO = YOLO(
             PROJECT_ROOT / 'data' / 'models' / 'yolov11n-face.pt'
         )
-        self.__opts = opts
-        self.__paths = self.__init_paths(opts)
+        self.__params: PFParams = params
+        self.__paths: list[Path] | dict[str, list[Path]] = (
+            self.__init_paths(params)
+        )
 
-    def __init_paths(self, args: argparse.Namespace):
-        source_dir: Path = args.input
-        output_dir: Path = args.output
+    def __init_paths(
+            self, params: PFParams
+    ) -> list[Path] | dict[str, list[Path]]:
+        source_dir: Path = params.input
+        output_dir: Path = params.output
 
-        if not args.force and source_dir.name != output_dir.name:
+        if not params.force and source_dir.name != output_dir.name:
             logger.warning(
                 'Final name of input dir and final name of '
                 f'output dir is not matched: '
@@ -37,7 +103,7 @@ class PersonFinder:
             if input() != 'y':
                 exit(0)
 
-        if not args.force and output_dir.is_dir():
+        if not params.force and output_dir.is_dir():
             logger.warning(f'Output folder already exist: {output_dir}')
             logger.warning('Do you want continue? (y/n)')
             if input() != 'y':
@@ -57,7 +123,7 @@ class PersonFinder:
         image_paths = sorted(image_paths)
         logger.info(f'Total images: {len(image_paths)}')
 
-        if args.limit_per_subdir < 1:
+        if params.limit_per_subdir < 1:
             input_data: list[Path] = image_paths
         else:
             logger.info('Split list of images into sub dirs...')
@@ -211,13 +277,13 @@ class PersonFinder:
         return np.array(bboxes, dtype=int)
 
     def run(self):
-        output_dir: Path = self.__opts.output
+        output_dir: Path = self.__params.output
 
-        target_label = self.__opts.target_label
-        max_objects_count = self.__opts.max_object_count
+        target_label = self.__params.target_label
+        max_objects_count = self.__params.max_object_count
 
-        target_shape: tuple[int, ...] = tuple(self.__opts.target_size)
-        obj_min_size: tuple[int, ...] = tuple(self.__opts.min_obj_size)
+        target_shape: tuple[int, ...] = tuple(self.__params.target_size)
+        obj_min_size: tuple[int, ...] = tuple(self.__params.min_obj_size)
 
         if len(target_shape) > 2:
             raise ValueError('Target shape must be a size 2.')
@@ -234,14 +300,14 @@ class PersonFinder:
             final_images_path = self.__paths
         else:
             logger.info(
-                f'Images per folder: {self.__opts.limit_per_subdir}'
+                f'Images per folder: {self.__params.limit_per_subdir}'
             )
             logger.info('Prepare finished list of images...')
             for sub_dir in tqdm(self.__paths):
                 image_paths: list[Path] = self.__paths[sub_dir]
                 shuffle(image_paths)
                 final_images_path.extend(
-                    image_paths[:self.__opts.limit_per_subdir]
+                    image_paths[:self.__params.limit_per_subdir]
                 )
             logger.info(f'The final image number: {len(final_images_path)}')
 

@@ -1,5 +1,5 @@
-from .person_finder import PersonFinder
+from .person_finder import PersonFinder, PFParams
 
 __all__ = [
-    'PersonFinder'
+    'PersonFinder', 'PFParams'
 ]

@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from loguru import logger
-from src.ds_gen import PersonFinder
+from src.ds_gen import PersonFinder, PFParams
 
 
 def parse_args():
@@ -54,7 +54,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    image_handler = PersonFinder(args)
+    params = PFParams(**args.__dict__)
+    image_handler = PersonFinder(params)
     image_handler.run()
     logger.info('Cropping process has been finished.')
 
