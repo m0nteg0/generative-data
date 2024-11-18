@@ -1,6 +1,11 @@
 ## Generative-data.
 
-This module is designed to prepare data that will later be used to train generative models, such as stable diffusion.
+This module is designed to prepare data that will later be used to train generative models, such as stable diffusion.  
+
+Each input image is searched for a region containing a person using
+the yolo detector. The found region is then reduced to square proportions,
+preserving the person's face in the given region (if there is a face
+in the image).
 
 ## Getting Started
 
