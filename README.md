@@ -32,5 +32,19 @@ python crop_person.py -i <input_images_dir> -o <output_dir>
 # Run script with specified number of random images from each subdirectory
 python crop_person.py -i <input_images_dir> -o <output_dir> --limit-per-subdir <number>
 # To see all possible options, run the command:
-python crop_person.py -h
+python crop_person.py --help
 ```
+Example run:
+```bash
+cd scripts
+python crop_person.py -i ../example/input -o ../example/output -s 512 --min-obj-size 256 --force
+```
+Arguments description:
+```
+-i: input images directory
+-i: output images directory
+-s: desired size of output images
+--min-obj-size: minimal size of region that contains persons.
+--force: forced overwrite of output directory
+```
+
