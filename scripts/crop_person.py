@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from loguru import logger
-from src.ds_gen import PersonFinder, PFParams
+from ds_gen import PersonFinder, PFParams
 
 
 def parse_args():
