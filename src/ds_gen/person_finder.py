@@ -94,7 +94,8 @@ class PersonFinder:
             person finder.
 
         """
-        self.__person_detector: YOLO = YOLO('yolo11s.pt')
+        yolo_model = f'{params.yolo_model.value}.pt'
+        self.__person_detector: YOLO = YOLO(yolo_model)
         self.__face_detector: YOLO = YOLO(
             PROJECT_ROOT / 'data' / 'models' / 'yolov11n-face.pt'
         )
@@ -150,7 +151,7 @@ class PersonFinder:
         logger.info('Prepare list of images...')
         image_extensions = ['.jpg', '.png', '.jpeg', '.webp']
         image_extensions = (
-                image_extensions + [x.upper() for x in image_extensions]
+            image_extensions + [x.upper() for x in image_extensions]
         )
         image_paths: list[Path] = [
             x for x in source_dir.rglob('*')
@@ -211,8 +212,8 @@ class PersonFinder:
         )
 
         if (
-                len(filtered_bboxes) == 0 or
-                len(filtered_bboxes) > max_objects_count
+            len(filtered_bboxes) == 0 or
+            len(filtered_bboxes) > max_objects_count
         ):
             return None
 
@@ -284,9 +285,10 @@ class PersonFinder:
         # Check min size of object
         indices = [
             i for i, x in enumerate(bboxes)
-            if ((x[2] - x[0] >= shape_thresh_min[0]) and
+            if (
+                (x[2] - x[0] >= shape_thresh_min[0]) and
                 (x[3] - x[1] >= shape_thresh_min[1])
-                )
+            )
         ]
         if len(indices) == 0:
             return np.array([])
