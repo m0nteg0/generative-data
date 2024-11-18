@@ -26,6 +26,13 @@ source .venv/bin/actiavte
 
 pip install -e .
 ```
+
+The model from the [project](https://github.com/akanametov/yolo-face) is used for face localization.  
+To download model used in the project follow the code snippet below:
+```bash
+source download_models.sh
+```
+
 ### Running from commandline
 
 Running a script to crop images with people:
