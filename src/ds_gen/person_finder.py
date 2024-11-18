@@ -95,7 +95,9 @@ class PersonFinder:
 
         """
         yolo_model = f'{params.yolo_model.value}.pt'
-        self.__person_detector: YOLO = YOLO(yolo_model)
+        self.__person_detector: YOLO = YOLO(
+            PROJECT_ROOT / 'data' / 'models' /yolo_model
+        )
         self.__face_detector: YOLO = YOLO(
             PROJECT_ROOT / 'data' / 'models' / 'yolov11n-face.pt'
         )
